@@ -175,7 +175,7 @@ data/<room>/   transcripts, audit log, exports (never committed)
 ./test.sh tests/test_policy.py -v
 ```
 
-Tests need **no** ACP processes — that's the whole point of pushing logic into `core/`.
+Tests need **no agents installed and no real model** — that's the whole point of pushing logic into `core/`. The only test that spawns a subprocess is `tests/test_session_resume.py`, and it runs `tests/stub_acp_agent.py`, a fake ACP server with switchable capabilities.
 `pytest.ini` turns `DeprecationWarning` into an error.
 
 ## Status
@@ -183,6 +183,17 @@ Tests need **no** ACP processes — that's the whole point of pushing logic into
 Working: multi-agent rooms, conversation-driven turn order, per-agent personas, layered context, reply guard, audit trail, skills, discussion engine with convergence detection, live model switching, persistence and markdown export.
 
 Not yet: multi-room UI, token budgets, cross-agent shared memory, mobile layout, i18n of the UI itself (UI and logs are Chinese).
+
+### Known limitations
+
+The Chinese README has a fuller list under 「已知限制」. The ones worth knowing up front:
+
+- **Response cleanup is a hardcoded patch.** Some CLIs prepend noise (`Warning: Model metadata ... not found`, a missing-Git-Bash complaint). Those exact patterns are stripped by a regex in `room.py`. Swap in a different agent and check whether it emits its own noise — if so, add a pattern to `_NOISE_RE` there.
+- **Agents cannot see each other within a parallel round.** Deliberate (see "How it works"). Set `"parallel_turns": false` if you want strict one-after-another, at the cost of longer wall time.
+- **`pi` reports 0 tokens.** Its adapter omits `usage` in the `session/prompt` response.
+- **Coding agents love to go read your files.** They interpret "get up to speed" as "read the codebase". The shared preamble already says not to; measured effect was Codex dropping from 54s / 24k tokens to 8.9s / 7.5k tokens. Re-check after changing agents.
+
+> This English README is condensed. The Chinese one additionally covers why ACP rather than a custom protocol, adding a non-ACP agent, the transcript format, and why agents that don't share context still don't talk past each other.
 
 ## Contributing
 

@@ -53,8 +53,21 @@ core/*.py   ✗ import room     ✗ import server     ✗ 任何 ACP 传输实�
 
 **不要加 mock。** 那是 `core/` 边界被破了的信号，回去把逻辑抽出去。
 
-`tests/test_room_seams.py` 里写着这条规则。它是全仓库**唯一** `import room` 的测试文件，
-刻意做得极薄：只验证「room 把什么交给了 core」，不验证 core 内部。
+`tests/test_room_seams.py` 里写着这条规则。会 `import room` 的测试一共四个：
+
+| 文件 | 做什么 |
+|---|---|
+| `test_room_seams.py` | 接缝：room 把什么交给了 core。定义了共用的假房间 |
+| `test_room_pacing.py` | 耗时记账、墙钟预算、同批并行、按家超时 |
+| `test_audit.py` | 审计字段 |
+| `test_agent_memory.py` | 记忆写回 |
+
+四个都用 `Room.__new__(Room)` 造假房间——跳过 `__init__`，所以既不起进程也不读 `config.json`，
+全部在几十毫秒内跑完。**没有一个起 ACP 进程，也没有一个 mock ACP 协议**。
+
+> 代价是假房间必须手动补齐 `run` / `_commit` / `_one_turn` 触及的每个属性。
+> `Room.__init__` 加了新属性而这里没跟上，症状是三个不相关的用例一起报
+> `AttributeError`——不是逻辑错，是桩漏了。看到这种失败先怀疑这个。
 
 ---
 
@@ -65,7 +78,9 @@ core/*.py   ✗ import room     ✗ import server     ✗ 任何 ACP 传输实�
 ./test.sh tests/test_policy.py -v
 ```
 
-- **不要起 ACP 进程。** 需要真进程的只有 `tests/test_session_resume.py`，它自己管。
+- **不要起真 agent。** `tests/test_session_resume.py` 会起子进程，但起的是
+  `tests/stub_acp_agent.py`（一个能力可开关的假 ACP server），不是真 agent——
+  真 agent 既慢又烧钱，而且各家支持程度不一样，测不出稳定结论。
 - `pytest.ini` 把 `DeprecationWarning` 设成 error——这是有意的，顺手逼出真问题。
 - 写测试时先想「这个 bug 当时是什么症状」，把症状写进 docstring。半年后有人改坏它，能立刻看懂为什么会有这条测试。
 

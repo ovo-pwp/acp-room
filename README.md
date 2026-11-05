@@ -334,7 +334,7 @@ server.py            FastAPI + WebSocket：推状态、收指令
 start.ps1            启动脚本
 config.example.json  配置骨架（复制成 config.json 再改）
 core/                纯函数层，不依赖 room / server，全部可单测
-tests/               全量单测，跑起来不需要起任何 ACP 进程
+tests/               全量单测：不用装 agent，也不用真模型
 skills/              技能定义（SKILL.md）
 web/                 前端：无构建、无框架，原生 JS + CSS
 data/<room>/         对话记录（不进版本库）：turns.jsonl / audit.jsonl / export.md
@@ -401,7 +401,10 @@ agent 自己没记忆了，让它重新看全部历史才对。
 .\test.ps1 tests/test_policy.py -v  # 单个文件
 ```
 
-测试**不需要起任何 ACP 进程**——这正是把逻辑抽进 `core/` 的目的。
+测试**不需要装任何 agent，也不需要真模型**——这正是把逻辑抽进 `core/` 的目的。
+唯一会起子进程的是 `tests/test_session_resume.py`，它跑的是 `tests/stub_acp_agent.py`
+（一个能力可开关的假 ACP server），不碰真 agent。
+
 `pytest.ini` 里把 `DeprecationWarning` 设成了 error，所以顺手能逼出真问题。
 
 架构上有一条硬约束：`core/` 里的模块不许 import `room` / `server`。

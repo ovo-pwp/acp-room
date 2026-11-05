@@ -1,6 +1,7 @@
 """room.py 与 core 的接缝测试 —— 不起 ACP 进程，只验证「调用参数对不对」。
 
-这是本套测试里唯一会 import room 的文件，所以刻意做得极薄：
+会 import room 的测试一共四个（本文件、test_room_pacing、test_audit、
+test_agent_memory），全部用 `Room.__new__` 造假房间。本文件是其中最薄的：
   - 不构造完整 Room（那要 4 个 ACP 进程 + 读 config.json）
   - 只验证 room 侧「我到底把什么交给了 core」
 
