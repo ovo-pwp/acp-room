@@ -1,0 +1,596 @@
+/* ============================================================
+   ACP Room 样式
+
+   结构：
+     1. 设计令牌（颜色 / 间距 / 字号 / 圆角）—— 所有尺寸都从这里取
+     2. 基础与重置
+     3. 侧栏
+     4. 消息流
+     5. 输入区
+     6. 浮层与卡片
+     7. 面板停靠（多块右侧面板互斥）
+     8. 窄屏降级
+
+   关于"密度"的历史问题（2026-11-03）：
+     原来侧栏里 #agents / .p1-config / #p3-skills 三块抢垂直空间，
+     P3 面板无样式、自然高度 3738px，把另外两块挤成 20px，
+     整页被撑到 4012px（body overflow:hidden → 看不见也滚不动）。
+     那次只做了"谁也压不死谁"的修补，**没有解决"同时摊开太多面板"**。
+     这次改的是信息架构：侧栏分区可折叠，右侧面板互斥。
+   ============================================================ */
+
+/* ---------- 1. 设计令牌 ---------- */
+:root {
+  /* 颜色（名字保持不变：其它 12 个面板文件共用了 54 处 var(--line) 之类） */
+  --bg: #0d1117;
+  --panel: #161b22;
+  --panel2: #1c2230;
+  --line: #2b3441;
+  --line-soft: #222a35;          /* 更弱的分隔线，用于区内分隔 */
+  --text: #e6edf3;
+  --dim: #8b949e;
+  /* 三级文字原来是 #6e7681，在 #0d1117 上只有 3.6:1 —— 小字号下看着"发灰发糊"，
+     正是"整个页面没光"的一部分。提到 4.5:1 左右，仍然明显弱于正文。 */
+  --dim2: #7d8590;
+  --accent: #6ea8fe;
+  --accent-soft: #1f6feb22;      /* 人类发言底色 */
+  --ok: #7ee787;
+  --warn: #ffb86c;
+  --err: #ff7b72;
+
+  /* 层次用的一组"光"。深色界面显平，通常不是颜色不够，是没有明暗过渡：
+     加一层极淡的顶部高光和一层柔和的投影，卡片才有"浮起来"的感觉。 */
+  --bevel: inset 0 1px 0 #ffffff0f;               /* 顶边高光 */
+  --lift: 0 1px 2px #00000040, 0 8px 24px #00000024;
+
+  /* 间距阶梯。8 的倍数为主，避免 3px/5px/7px 这类手工值堆积 */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+
+  /* 字号阶梯。原来是 10/11/12/13/14/15px 各写各的，没有层级 */
+  --fs-xs: 11px;                 /* 元信息：时间、token、耗时 */
+  --fs-sm: 12px;                 /* 次要说明 */
+  --fs-base: 13.5px;             /* 正文（消息内容） */
+  --fs-md: 15px;                 /* 小标题 */
+  --fs-lg: 17px;                 /* 页面标题 */
+
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-full: 999px;
+
+  --shadow-1: 0 1px 2px #00000040;
+  --shadow-2: 0 8px 24px #00000055;
+  --shadow-3: 0 24px 64px #000000a0;
+
+  --rail-w: 340px;               /* 右侧面板统一宽度 */
+  --aside-w: 300px;
+  --ease: cubic-bezier(.4, 0, .2, 1);
+
+  /* 原生控件（select 弹出层、滚动条）跟着暗色走。
+     不加这条，select 的下拉面板是系统白底 + 页面浅色字 → 看不见。 */
+  color-scheme: dark;
+}
+
+/* ---------- 2. 基础与重置 ---------- */
+select option { background: var(--panel); color: var(--text); }
+
+input:focus, select:focus, textarea:focus, button:focus,
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+* { box-sizing: border-box; }
+
+/* 主题化滚动条。默认的浅色滚动条在深色页面上是两条刺眼的白线 */
+* { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--line); border-radius: var(--r-full);
+  border: 3px solid transparent; background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: #3a4553; background-clip: content-box; }
+
+body {
+  margin: 0;
+  /* 三层：右上一点冷光、左下一点暖调余光、底色。
+     都用极低透明度，目的是让大面积深色有明暗走向，不是加装饰。
+     纯平面 #0d1117 铺满整屏时，眼睛找不到焦点，整页就显得"死"。 */
+  background:
+    radial-gradient(1100px 620px at 82% -8%, #1c2a44 0%, transparent 58%),
+    radial-gradient(900px 520px at 6% 106%, #17202e 0%, transparent 62%),
+    var(--bg);
+  background-attachment: fixed;
+  color: var(--text);
+  height: 100vh;
+  display: grid;
+  grid-template-columns: var(--aside-w) 1fr;
+  overflow: hidden;
+  font: var(--fs-base)/1.7 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ---------- 3. 侧栏 ---------- */
+aside {
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* 侧栏自己不滚了。旧版 `overflow: hidden auto` 让它整列滚，
+     而底部按钮又是 sticky —— 展开的面板就会被压在按钮底下。
+     现在只有 agent 列表滚，其它都是固定高度的行。 */
+  overflow: hidden;
+}
+aside > * { flex: 0 0 auto; }
+
+aside header {
+  padding: var(--sp-4) var(--sp-4) var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 2;
+  /* 滚动时盖住下面的内容。用渐变而不是纯色：纯色会和下方内容"切"得太硬，
+     加一层从亮到暗的过渡，滚上去的消息会自然淡出。 */
+  background: linear-gradient(180deg, #1a212b, var(--panel) 72%);
+  box-shadow: var(--bevel);
+}
+aside h1 {
+  font-size: var(--fs-lg); margin: 0 0 var(--sp-1);
+  font-weight: 650; letter-spacing: .2px;
+}
+aside .sub { font-size: var(--fs-xs); color: var(--dim2); word-break: break-all; line-height: 1.5; }
+
+/* agent 列表：侧栏唯一会让位的部分——它自己滚，把其它行固定住 */
+.agents {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; align-content: start;
+  padding: var(--sp-3); display: grid; gap: 2px;
+}
+
+.agent {
+  display: flex; gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  cursor: pointer; align-items: flex-start;
+  transition: background .12s var(--ease), border-color .12s var(--ease), box-shadow .16s var(--ease);
+  border: 1px solid transparent;
+}
+.agent:hover {
+  background: var(--panel2);
+  box-shadow: var(--bevel), 0 2px 10px #00000033;
+}
+.agent.on { background: var(--panel2); border-color: var(--line); box-shadow: var(--bevel); }
+.agent .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  margin-top: 6px; flex: none;
+  /* color 由 JS 设成和背景一样，于是 currentColor 就是状态色，
+     光晕直接跟着状态走（在线绿、发言橙、出错红），不用再写三份。 */
+  box-shadow: 0 0 0 3px #00000040, 0 0 9px currentColor;
+}
+.agent .meta { min-width: 0; flex: 1; display: grid; gap: 2px; }
+.agent .nm {
+  font-weight: 650; font-size: var(--fs-md); line-height: 1.4;
+  color: var(--c, var(--text));
+}
+.agent .hint {
+  font-size: var(--fs-xs); color: var(--dim2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* G4：模型名本身就是一个按钮。以前它只是侧栏上一行读死的说明文字，
+   想换模型得自己去抽屉里翻——最高频的操作不该藏最深。 */
+.agent .mchip {
+  display: inline-block; max-width: 100%;
+  font: inherit; font-family: Consolas, "Cascadia Mono", monospace;
+  color: var(--dim); background: none;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  padding: 0 6px; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  vertical-align: middle;
+}
+.agent .mchip:hover { color: var(--accent); border-color: var(--accent); }
+.agent .rs {
+  display: inline-block; margin-left: 6px;
+  font-size: var(--fs-xs); color: var(--ok);
+}
+/* 存过会话但没接回来：不是错误（它照样能用），是"它不记得前文"的提醒，
+   所以用警告色而不是红。原因在 title 里。 */
+.agent .rs.lost { color: var(--warn); cursor: help; }
+.agent .st { font-size: var(--fs-xs); }
+.agent .idx {
+  font-size: var(--fs-xs); color: var(--dim2);
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  padding: 0 6px; margin-top: 3px; flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 侧栏底部动作区 */
+.aside-actions {
+  padding: var(--sp-3);
+  border-top: 1px solid var(--line);
+  display: grid; gap: var(--sp-2);
+  /* 不再是 sticky：它现在真的在 flex 列末尾，不需要靠 sticky 抢位置。
+     旧版的 sticky 会盖住展开的面板（实测 p16 表格 383px 被压在按钮下）。 */
+  flex: 0 0 auto;
+  background: linear-gradient(180deg, var(--panel), #131820);
+  box-shadow: var(--bevel);
+}
+.aside-actions button { width: 100%; text-align: left; }
+.aside-actions #rail-btn { color: var(--accent); border-color: #6ea8fe55; }
+.aside-actions #rail-btn:hover { background: #6ea8fe1a; }
+
+/* ---------- 4. 消息流 ---------- */
+main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+
+#log {
+  flex: 1; overflow-y: auto;
+  padding: var(--sp-6) var(--sp-7) var(--sp-4);
+  scroll-behavior: smooth;
+}
+
+.turn {
+  position: relative;
+  display: flex; gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-4) var(--sp-4) var(--sp-4);
+  margin-bottom: 10px;
+  border-radius: var(--r-lg);
+  border: 1px solid transparent;
+  /* 顶部 4% 白到透明的渐变 = 一层薄薄的"受光面"。
+     没有它，卡片和背景一样黑，看起来就只是把文字挪了挪位置。 */
+  background: linear-gradient(180deg, #ffffff07, #ffffff02);
+  box-shadow: var(--bevel);
+  transition: background .16s var(--ease), border-color .16s var(--ease);
+  animation: in .2s var(--ease);
+  max-width: 980px;                  /* 行长上限：太宽会难读 */
+}
+
+/* 左侧色条 = 谁在说话。只用 3px，但把发言人和颜色绑在了一起：
+   以前颜色只在 34px 的头像里，扫读时根本抓不到。 */
+.turn::before {
+  content: '';
+  position: absolute; left: 0; top: 14px; bottom: 14px;
+  width: 3px; border-radius: 0 var(--r-full) var(--r-full) 0;
+  background: var(--c, var(--accent));
+  opacity: .5;
+  transition: opacity .16s var(--ease), top .16s var(--ease), bottom .16s var(--ease);
+}
+
+.turn:hover {
+  background: linear-gradient(180deg, #ffffff0c, #ffffff04);
+  border-color: var(--line);
+}
+.turn:hover::before { opacity: 1; }
+
+@keyframes in { from { opacity: 0; transform: translateY(6px); } }
+
+/* 人类发言：整块染色，而不是在文字外面再套一个框。
+   以前是 .human .txt 加底色+左边框，卡片化之后会变成"框中框"，所以搬到卡片层。 */
+.turn.human {
+  background: linear-gradient(180deg, #1f6feb26, #1f6feb0e);
+  border-color: #1f6feb33;
+}
+.turn.human:hover { border-color: #1f6feb66; }
+
+.turn.err { border-color: #ff7b7240; background: linear-gradient(180deg, #ff7b7214, #ff7b7206); }
+
+.av {
+  width: 34px; height: 34px; border-radius: var(--r-md); flex: none;
+  display: grid; place-items: center;
+  font-size: var(--fs-sm); font-weight: 700; color: #0b0f16;
+  /* background-color 由 JS 内联给（说话人颜色），这里叠一层斜向渐变做球面感，
+     再加内高光 + 外发光：纯色方块看着像贴纸，有明暗才像"头像"。 */
+  background-image: linear-gradient(150deg, #ffffff5c, #ffffff00 52%, #00000045);
+  box-shadow:
+    var(--bevel),
+    0 2px 8px #00000055,
+    0 0 14px -4px var(--c, var(--accent));
+  text-shadow: 0 1px 0 #ffffff33;
+}
+.body { min-width: 0; flex: 1; }
+
+.who {
+  font-size: var(--fs-sm); margin-bottom: var(--sp-2);
+  display: flex; gap: var(--sp-2); align-items: baseline; flex-wrap: wrap;
+}
+.who .nm { font-weight: 700; color: var(--c, var(--text)); letter-spacing: .1px; }
+.who .tm, .who .tk { color: var(--dim2); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+/* G4：每句话的模型戳。等宽字体是因为模型 id 里有 / 和 : ——
+   用正文字体的话「agent2api/GLM-5.3-Flash」和「custom:kimi-k3-max」看着像同一串。 */
+.who .mdl {
+  color: var(--dim); font-size: var(--fs-xs);
+  font-family: Consolas, "Cascadia Mono", monospace;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  padding: 0 5px;
+}
+.who .slow { color: var(--warn); font-size: var(--fs-xs); }
+
+.txt { white-space: pre-wrap; word-break: break-word; }
+.txt code {
+  background: #00000055; padding: 2px 6px; border-radius: var(--r-sm);
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: .92em;
+}
+.txt pre {
+  background: #00000055; padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md); overflow-x: auto;
+  border: 1px solid var(--line); font-size: .92em; line-height: 1.6;
+}
+
+/* 人类发言的底色已上移到 .turn.human（卡片层）。
+   原来这里给 .txt 加底+左边框，卡片化之后会套成两层框，所以去掉。 */
+.err .txt { color: var(--err); }
+
+/* 工具调用胶囊 */
+.tools { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin: var(--sp-2) 0 0; }
+.tool {
+  font-size: var(--fs-xs); color: var(--dim);
+  border: 1px solid var(--line); border-radius: var(--r-full);
+  padding: 2px 10px; background: var(--panel);
+}
+.tool.running { border-color: var(--warn); color: var(--warn); }
+.tool.completed { border-color: var(--ok); color: var(--ok); }
+.tool.failed { border-color: var(--err); color: var(--err); }
+
+.typing { color: var(--dim2); font-size: var(--fs-sm); }
+.elapsed { color: var(--warn); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.caret {
+  display: inline-block; width: 7px; height: 15px; background: var(--accent);
+  animation: blink .9s steps(1) infinite; vertical-align: -2px; margin-left: 3px;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+/* ---------- 5. 输入区 ---------- */
+footer {
+  border-top: 1px solid var(--line);
+  padding: var(--sp-4) var(--sp-5) var(--sp-4);
+  background: linear-gradient(180deg, var(--panel), #131820);
+  box-shadow: inset 0 1px 0 #ffffff0a, 0 -8px 24px -16px #00000080;
+}
+.row { display: flex; gap: var(--sp-2); align-items: flex-end; max-width: 1100px; }
+textarea {
+  flex: 1; background: var(--bg); color: var(--text);
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  padding: var(--sp-3) var(--sp-4); resize: none; font: inherit;
+  max-height: 220px; min-height: 46px; outline: none;
+  transition: border-color .12s var(--ease), box-shadow .16s var(--ease), background .16s var(--ease);
+}
+textarea:hover { border-color: #3a4553; }
+/* 焦点不要只换边框颜色：加一圈柔和外发光，输入区才"亮起来"，
+   一眼能看出焦点在哪。 */
+textarea:focus {
+  border-color: var(--accent);
+  background: #0b0f16;
+  box-shadow: 0 0 0 3px #6ea8fe26, 0 0 22px -6px #6ea8fe5c;
+}
+button {
+  background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+  border-radius: var(--r-md); padding: 10px 16px;
+  cursor: pointer; font: inherit; font-size: var(--fs-sm);
+  transition: border-color .12s var(--ease), color .12s var(--ease), background .12s var(--ease);
+}
+button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.primary {
+  background: linear-gradient(180deg, #3b8ef8, #1f6feb);
+  border-color: #4a97ff; color: #fff; font-weight: 600;
+  padding: 10px 22px;
+  box-shadow: var(--bevel), 0 4px 16px -4px #1f6feb99;
+  transition: filter .12s var(--ease), box-shadow .16s var(--ease), transform .08s var(--ease);
+}
+button.primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #4f9cff, #2b7ef0); color: #fff;
+  box-shadow: var(--bevel), 0 6px 22px -4px #1f6febb3;
+}
+button.primary:active:not(:disabled) { transform: translateY(1px); }
+
+.bar {
+  display: flex; gap: var(--sp-4); align-items: center;
+  margin-top: var(--sp-3); font-size: var(--fs-sm); color: var(--dim);
+  max-width: 1100px; flex-wrap: wrap;
+}
+.bar label { display: flex; gap: var(--sp-1); align-items: center; }
+.bar input[type=number] {
+  width: 54px; background: var(--bg); color: var(--text);
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  padding: 4px 6px; font: inherit;
+}
+.bar .sp { flex: 1; }
+#saved { color: var(--ok); font-size: var(--fs-xs); }
+
+/* ---------- 6. 浮层与卡片 ---------- */
+#perm {
+  position: fixed; inset: 0; background: #000000aa; display: none;
+  place-items: center; z-index: 50; backdrop-filter: blur(3px);
+}
+#perm.show { display: grid; }
+.card {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--r-lg); padding: var(--sp-5) var(--sp-5);
+  max-width: 520px; width: calc(100% - 40px);
+  box-shadow: var(--shadow-3);
+}
+.card h3 { margin: 0 0 var(--sp-2); font-size: var(--fs-md); }
+.card p { color: var(--dim); font-size: var(--fs-base); margin: 0 0 var(--sp-4); }
+.card .opts { display: flex; flex-direction: column; gap: var(--sp-2); }
+.card .opts button { text-align: left; }
+.badge {
+  font-size: var(--fs-xs); padding: 2px 8px;
+  border-radius: var(--r-full); border: 1px solid var(--line);
+}
+
+/* ---------- 7. 面板停靠 ----------
+   右侧原来有两块 fixed 面板各自写死 right:0（P7 活动 300px、P13 健康 360px），
+   两块同时展开时正文只剩 596px 宽（1536px 屏），这是"密集"的主因。
+
+   规则改为：
+     a) 统一宽度 var(--rail-w)，两块互斥（由 p17-shell.js 保证只有一块展开）
+     b) 不论展开几块，正文只让出一栏的宽度
+     c) 竖排 tab 叠在一条线上，不互相盖住
+*/
+body.p7-rail-open { padding-right: var(--rail-w); }
+body.p13-rail-open { padding-right: var(--rail-w); }
+body.p13-rail-open.p7-rail-open { padding-right: var(--rail-w); }  /* 互斥兜底 */
+
+#p7-audit, #p13-panel { width: var(--rail-w) !important; }
+
+/* 两块 tab 都在右侧竖排。给它们错开 top，避免重叠 */
+#p7-aud-tab { top: calc(50% - 46px) !important; }
+#p13-tab { top: calc(50% + 18px) !important; }
+
+/* 收起时平移一栏宽度（不是自身宽度），否则会停在另一块面板上面 */
+#p7-audit.p7-collapsed { transform: translateX(var(--rail-w)); }
+#p13-panel.p13-hide { transform: translateX(var(--rail-w)); }
+
+/* 侧栏分区的折叠样式（由 p17-shell.js 给 #p1-config / #p3-skills 加外壳） */
+.shell-sec { border-top: 1px solid var(--line); }
+.shell-sec > summary {
+  list-style: none; cursor: pointer; user-select: none;
+  padding: var(--sp-3) var(--sp-4);
+  font-size: var(--fs-sm); color: var(--dim);
+  display: flex; align-items: center; justify-content: space-between;
+  transition: color .12s var(--ease), background .12s var(--ease);
+}
+.shell-sec > summary::-webkit-details-marker { display: none; }
+.shell-sec > summary:hover { color: var(--text); background: var(--panel2); }
+.shell-sec > summary::after {
+  content: "▸"; font-size: 10px; opacity: .7;
+  transition: transform .15s var(--ease);
+}
+.shell-sec[open] > summary::after { transform: rotate(90deg); }
+.shell-sec > .shell-sec-body { padding: 0 var(--sp-3) var(--sp-3); }
+
+/* 「添加 agent」表单：P14 用 hidden 属性折叠，但它自己的 .p14-body{display:grid}
+   是作者样式，压过浏览器 UA 的 [hidden]{display:none} —— 于是 5 个输入框常驻侧栏，
+   点标题也收不起来。这条把 hidden 的语义补回来（#id[hidden] 优先级更高）。 */
+#p14-body[hidden] { display: none; }
+
+/* ---------- 7.6 右侧抽屉：配置 / 技能 / 算力 ----------
+   原来这三块塞在侧栏的 <details> 里，展开就把侧栏撑爆、被底部按钮盖住。
+   现在统一收进一个贴右边缘的抽屉，用顶部分页切换。
+   抽屉和 P7 活动 / P13 健康两个浮层互斥（都贴右边缘，同开会重叠）。 */
+#rail {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: var(--rail-w);
+  display: flex; flex-direction: column;
+  background: linear-gradient(180deg, #171d26, var(--panel));
+  border-left: 1px solid var(--line);
+  box-shadow: -28px 0 56px -28px #000000b8;
+  transform: translateX(100%);
+  transition: transform .22s var(--ease);
+  z-index: 40;
+}
+body.rail-open #rail { transform: none; }
+body.rail-open { padding-right: var(--rail-w); }
+
+.rail-head {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  box-shadow: var(--bevel);
+  flex: 0 0 auto;
+}
+.rail-tabs { display: flex; gap: 4px; flex: 1; min-width: 0; }
+.rail-tab {
+  flex: 1; padding: 6px 8px; border-radius: var(--r-sm);
+  background: transparent; border: 1px solid transparent;
+  color: var(--dim); font-size: var(--fs-sm); font-weight: 500;
+}
+.rail-tab:hover:not(.on) { color: var(--text); background: #ffffff0a; border-color: transparent; }
+.rail-tab.on {
+  color: var(--text);
+  background: linear-gradient(180deg, #ffffff14, #ffffff06);
+  border-color: var(--line); box-shadow: var(--bevel);
+}
+.rail-close {
+  flex: none; width: 28px; height: 28px; padding: 0;
+  border-radius: var(--r-sm); color: var(--dim); font-size: 13px; line-height: 1;
+}
+.rail-close:hover { color: var(--text); border-color: var(--line); }
+
+.rail-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-3); }
+.rail-pane { display: none; }
+.rail-pane.on { display: block; }
+.rail-empty { color: var(--dim2); font-size: var(--fs-sm); padding: var(--sp-4) 0; }
+
+/* 这三个面板原来按"侧栏里的小块"设计，自带高度上限和内部滚动。
+   抽屉有整屏高度，解除限制，让它们自己长。 */
+#rail .p1-config,
+#rail .p3-panel,
+#rail #p3-skills,
+#rail #p16-perf { max-height: none; overflow: visible; }
+
+/* P7 活动 / P13 健康 的侧边标签是 z-index 41，在抽屉之上。抽屉开着时
+   把它们挪到抽屉左边缘：既不遮住抽屉内容，又还能点（点了会自动收起抽屉）。 */
+body.rail-open #p7-aud-tab,
+body.rail-open #p13-tab {
+  right: var(--rail-w);
+  transition: right .22s var(--ease);
+}
+
+/* ---------- 7.5 细节抛光（2026-11-04） ---------- */
+
+/* 选中文字：默认的深蓝在深色底上几乎看不出来，选了半天不知道选中了啥 */
+::selection { background: #6ea8fe45; color: #fff; }
+
+/* 工具调用胶囊：原来只是描边，悬停也没反应，在消息里像贴纸。
+   给一点底色和微光，让它读起来是"一个可标记的状态"。 */
+.tool {
+  background: linear-gradient(180deg, #ffffff0a, #ffffff03);
+  box-shadow: var(--bevel);
+  transition: border-color .12s var(--ease), background .12s var(--ease);
+}
+.tool:hover { background: #ffffff0f; }
+.tool.running { background: linear-gradient(180deg, #ffb86c1f, #ffb86c08); }
+.tool.completed { background: linear-gradient(180deg, #7ee7871a, #7ee78706); }
+.tool.failed { background: linear-gradient(180deg, #ff7b721f, #ff7b7208); }
+
+/* 徽章同理：让状态色有存在感，但不刺眼 */
+.badge { background: linear-gradient(180deg, #ffffff08, #ffffff02); box-shadow: var(--bevel); }
+
+/* 行内代码块：纯黑底在深色卡片上会"挖个洞"，改成半透明白更融 */
+.txt code { background: #ffffff12; border: 1px solid #ffffff0f; }
+.txt pre { background: #00000045; box-shadow: var(--bevel); }
+
+/* ---------- 8. 窄屏降级 ---------- */
+@media (max-width: 1280px) {
+  :root { --aside-w: 260px; --rail-w: 300px; }
+  #log { padding: var(--sp-5) var(--sp-5) var(--sp-3); }
+}
+@media (max-width: 980px) {
+  /* 窄屏时右侧面板改为整屏覆盖，不再挤压聊天区 */
+  body.p7-rail-open, body.p13-rail-open,
+  body.p13-rail-open.p7-rail-open { padding-right: 0; }
+  #p7-audit, #p13-panel { width: min(88vw, var(--rail-w)) !important; }
+}
+
+/* ---------- 9. 侧栏横向收敛 ----------
+   侧栏是 260~300px 的窄容器，而里面的表格（P16 算力对比）自然宽度 352px。
+   实测：不收敛时 aside.scrollWidth 比 clientWidth 大 113px，
+   整个 aside 出现横向滚动条，把纵向滚动条挤到看不见的位置。
+
+   这里不改那些面板文件（它们是不同轮次交付的，还在各自演进），
+   只在外壳层做两件事：
+     a) 侧栏自己不许横向滚
+     b) 表格类宽内容自己在块内横滚
+   这是"响应式表格"的标准做法：table 变 block 后保留自身布局并局部滚动。 */
+aside { overflow-x: hidden; }
+aside > * { min-width: 0; max-width: 100%; }
+
+aside table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+aside .shell-sec-body,
+aside .p1-config,
+aside .p16-body {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}

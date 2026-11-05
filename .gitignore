@@ -1,0 +1,63 @@
+# ---------------- 运行时数据 ----------------
+# 房间的转录、审计、记忆、导出都在 data/ 下，是**使用者自己的对话**，
+# 绝不能进版本库。新克隆的仓库跑起来会自动重建。
+data/
+state.json
+
+# 兜底：转录是 JSONL。哪怕有人把 data/ 改到别处（换 room 名或改路径），
+# 也不该因为路径变了就把对话提交上去。真要放测试夹具，用 !tests/fixtures/*.jsonl 放行。
+*.jsonl
+!tests/fixtures/*.jsonl
+
+# ---------------- 配置 ----------------
+# config.json 描述的是「这台机器上有哪些 agent、命令怎么写、工作目录在哪」，
+# 每台机器都不一样。只提交示例，使用者复制一份改。
+config.json
+
+# ---------------- 日志 ----------------
+*.log
+logs/
+
+# ---------------- 备份 ----------------
+*.bak
+*.bak-*
+*.bak.*
+*.pre-*
+*.prelocal
+*.patched
+*.orig
+room.py.*-bak
+state.json.*
+config.json.bak*
+config.json.pre*
+*_probe*.json
+
+# ---------------- 一次性验证脚本 ----------------
+# 开发过程中写的一次性探针/截图工具，不作为产品的一部分。
+# 少数长期有用的（_density.mjs / _look.mjs / _shot.mjs / _verify_free_live.py）
+# 应该挪进 scripts/ 再提交，不要靠在这里放行。
+_*.py
+_*.mjs
+_*.cjs
+_*.jsonl
+_*.txt
+
+# ---------------- 截图 ----------------
+# 界面改动过程中的对比图。真要贴文档里的，放 docs/ 并单独放行。
+*.png
+
+# ---------------- Python ----------------
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+
+# ---------------- 编辑器 / 系统 ----------------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

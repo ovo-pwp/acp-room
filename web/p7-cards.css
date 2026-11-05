@@ -1,0 +1,96 @@
+/* P7（claude 交付）—— OpenBot 风格界面骨架
+   1) 工具调用卡片（.p7-tool-card，显示 decision）
+   2) 审批弹窗"为什么"行（#perm .p7-why）
+   3) 活动/审计侧栏（#p7-audit，读 /api/audit，可折叠）
+   全部使用 app.js 的 CSS 变量，不引入任何依赖。 */
+
+/* ---------- 工具调用卡片 ---------- */
+.p7-tool-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel2);
+  padding: 8px 10px;
+  min-width: 220px;
+  max-width: 360px;
+}
+.p7-tool-card .p7-head { display: flex; gap: 6px; align-items: center; font-size: 11px; }
+.p7-tool-card .p7-ico { font-size: 11px; }
+.p7-tool-card .p7-kind { color: var(--dim); font-weight: 600; }
+.p7-tool-card .p7-t { font-size: 12px; margin-top: 4px; word-break: break-all; }
+.p7-tool-card .p7-rule {
+  font-size: 10px; color: var(--dim); margin-top: 3px;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  word-break: break-all; cursor: default;
+}
+.p7-tool-card .p7-rule:hover { color: var(--warn); }
+.p7-tool-card .p7-st { font-size: 11px; margin-top: 4px; color: var(--dim); }
+.p7-tool-card .p7-st.ok { color: var(--ok); }
+.p7-tool-card .p7-st.bad { color: var(--err); }
+.p7-tool-card .p7-st.run { color: var(--warn); }
+.p7-secs { font-variant-numeric: tabular-nums; color: var(--dim); }
+
+/* decision 徽章（工具卡片 + 侧栏共用） */
+.p7-badge {
+  font-size: 10px; padding: 0 7px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--dim);
+  white-space: nowrap; margin-left: auto;
+}
+.p7-badge.p7-d-ok     { color: var(--ok);     border-color: var(--ok); }
+.p7-badge.p7-d-accent { color: var(--accent); border-color: var(--accent); }
+.p7-badge.p7-d-err    { color: var(--err);    border-color: var(--err); }
+.p7-badge.p7-d-warn   { color: var(--warn);   border-color: var(--warn); }
+
+/* ---------- 审批弹窗"为什么" ---------- */
+#perm .p7-why {
+  color: var(--warn);
+  font-size: 12px;
+  border-left: 3px solid var(--warn);
+  background: #ffb86c14;
+  padding: 6px 10px;
+  border-radius: 0 6px 6px 0;
+  margin: -6px 0 14px;
+}
+
+/* ---------- 活动 / 审计侧栏 ---------- */
+#p7-audit {
+  position: fixed; top: 0; right: 0; height: 100vh; width: 300px;
+  background: var(--panel); border-left: 1px solid var(--line); z-index: 40;
+  display: flex; flex-direction: column;
+  transition: transform .18s ease-out;
+  font-size: 12px;
+}
+#p7-audit.p7-collapsed { transform: translateX(100%); }
+.p7-aud-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px; border-bottom: 1px solid var(--line); flex: none;
+}
+.p7-aud-title { font-weight: 600; font-size: 12px; letter-spacing: .3px; }
+.p7-aud-close {
+  background: none; border: none; color: var(--dim); cursor: pointer;
+  font-size: 14px; padding: 2px 8px;
+}
+.p7-aud-close:hover { color: var(--accent); }
+.p7-aud-body { flex: 1; overflow-y: auto; padding: 10px 12px; }
+.p7-aud-meta { color: var(--dim); font-size: 11px; margin-bottom: 8px; }
+.p7-row {
+  border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px;
+  margin-bottom: 7px; background: var(--panel2);
+}
+.p7-row.p7-err { border-color: var(--err); }
+.p7-row-top { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.p7-t { color: var(--dim); font-size: 10px; font-variant-numeric: tabular-nums; }
+.p7-a { color: var(--accent); font-weight: 600; }
+.p7-e { color: var(--dim); font-size: 10px; }
+.p7-row-title { margin-top: 3px; color: var(--text); font-size: 11px; word-break: break-all; }
+.p7-empty, .p7-placeholder { color: var(--dim); padding: 24px 8px; text-align: center; }
+.p7-placeholder .p7-ph-title { color: var(--warn); font-weight: 600; margin-bottom: 4px; }
+
+/* 收起后的拉手 */
+#p7-aud-tab {
+  position: fixed; right: 0; top: 96px; z-index: 41;
+  background: var(--panel2); color: var(--dim);
+  border: 1px solid var(--line); border-right: none;
+  border-radius: 8px 0 0 8px; padding: 8px 9px; cursor: pointer;
+  font-size: 12px; display: none;
+}
+#p7-aud-tab.show { display: block; }

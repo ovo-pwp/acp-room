@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# 测试：只跑纯函数和接缝，不需要起任何 ACP 进程。
+pytest>=8.0

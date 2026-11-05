@@ -1,0 +1,130 @@
+{
+  "agents": [
+    {
+      "id": "claude",
+      "name": "Claude Code",
+      "cmd": [
+        "npx",
+        "-y",
+        "--package=@agentclientprotocol/claude-agent-acp",
+        "--",
+        "claude-agent-acp"
+      ],
+      "model_hint": "Claude Code · 用 CLI 自己的登录",
+      "color": "#d3a0ff",
+      "permission": "ask",
+      "enabled": true,
+      "role": "你负责**代价与边界**。任何方案你都先问四件事：要花多少、什么时候会失败、谁来维护、出错时怎么退回去。你倾向于「先做能立刻验证的那一步」，并明确说出你放弃了什么。你不喜欢宏大叙事，也不相信没有代价的方案。",
+      "tag": "代价与边界 · 花多少、何时失败、怎么退",
+      "style": "先给代价和风险，再给建议；明确说出放弃了什么"
+    },
+    {
+      "id": "codex",
+      "name": "Codex",
+      "cmd": [
+        "npx",
+        "-y",
+        "--package=@agentclientprotocol/codex-acp",
+        "--",
+        "codex-acp"
+      ],
+      "model_hint": "Codex CLI · 用 CLI 自己的登录",
+      "color": "#7ee787",
+      "permission": "ask",
+      "enabled": true,
+      "role": "你负责**落地**。你倾向给具体步骤、可判定的标准、以及「做完怎么知道成了」。你的回答通常最短。如果别人停留在抽象层面，你会把它压到一个明天早上能执行的动作上。你不太关心观点漂不漂亮。",
+      "tag": "落地 · 给具体步骤和验收标准",
+      "style": "最短，动词开头，给可执行步骤和验收标准"
+    },
+    {
+      "id": "gemini",
+      "name": "Gemini",
+      "cmd": [
+        "gemini",
+        "--acp"
+      ],
+      "model_hint": "Gemini CLI",
+      "color": "#8ab4f8",
+      "permission": "ask",
+      "enabled": true,
+      "role": "你负责**拆解问题**。习惯先把问题切成几条互不重叠的子问题，逐条判断，最后才给结论。喜欢用对照和反例说明事情，不喜欢铺垫。你对没有边界的说法过敏——听到「大多数情况」「通常」会追问具体条件。",
+      "tag": "拆解问题 · 切子问题、要边界、给对照",
+      "style": "先给结论再给理由，短句，不用客套开头"
+    }
+  ],
+  "cwd": ".",
+  "turn_timeout": 900,
+  "parallel_turns": true,
+  "discussion": {
+    "method": "standard",
+    "max_rounds": 4,
+    "max_tokens": 200000,
+    "max_seconds": 900
+  },
+  "skills": {
+    "enabled": true,
+    "roots": [
+      "./skills",
+      "~/.claude/skills",
+      "~/.agents/skills"
+    ]
+  },
+  "policy": {
+    "_doc": "写类动作一律交给人，只读放行，危险的直接拒。顺序 deny->approve->escalate->default。",
+    "enabled": true,
+    "auto_deny": [
+      {
+        "command_regex": "(?i)\\brm\\s+-rf\\b"
+      },
+      {
+        "command_regex": "(?i)\\bformat-volume\\b"
+      },
+      {
+        "path_contains": "/.ssh/"
+      }
+    ],
+    "auto_approve": [
+      {
+        "tool": "read"
+      },
+      {
+        "tool": "search"
+      },
+      {
+        "tool": "fetch"
+      }
+    ],
+    "escalate": [
+      {
+        "tool": "edit"
+      },
+      {
+        "tool": "write"
+      },
+      {
+        "tool": "execute"
+      },
+      {
+        "tool": "terminal"
+      }
+    ],
+    "default_action": "escalate"
+  },
+  "bench": {
+    "_doc": "吞吐基准：targets 里每一项是一个可直接请求的端点（不是 agent 本身）。留空不影响房间运行。",
+    "enabled": false,
+    "cache_seconds": 600,
+    "targets": []
+  },
+  "conversation": {
+    "_doc": "mode=free 时顺序由对话决定（上一句点名谁谁接话）；round 是旧的固定轮转。max_per_agent 是单人在一场里的尝试上限，防 A 问 B、B 反问 A 绕圈。",
+    "mode": "free",
+    "max_per_agent": 3
+  },
+  "agent_memory": {
+    "_doc": "G6：把房间的讨论结论推进各 agent 自己的长期记忆文件（Claude 的 ~/.claude/CLAUDE.md、Codex 的 ~/.codex/AGENTS.md、omp 的 ~/.agents/AGENTS.md、pi 的 ~/.pi/agent/AGENTS.md、Hermes 的 memories/MEMORY.md）。auto_promote 只管讨论跑完自动写；界面上那颗按钮不受它管，人按下去本身就是同意。落点是别的程序在用的文件，所以默认关。生效时机是各 agent 的下一次会话，不是现在这一场。targets 可按 id 覆盖：{pi: {path: '~/.pi/agent/AGENTS.md', format: 'markdown'}}，Hermes 用 format=hermes（§ 条目 + 按字的预算）。keep/entry_chars 控制每个落点保几条、每条多少字。",
+    "auto_promote": false,
+    "keep": 6,
+    "entry_chars": 320
+  }
+}

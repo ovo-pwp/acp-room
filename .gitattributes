@@ -1,0 +1,12 @@
+# 统一换行，避免 Windows 贡献者提交时整文件变成 CRLF，
+# 让 diff 里混进几千行"什么都没改"的噪音。
+* text=auto eol=lf
+
+# PowerShell 脚本在 Windows 上必须能被原生解析，但也用 LF 没问题，
+# 这里保持默认；只把二进制标出来。
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
