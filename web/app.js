@@ -134,6 +134,9 @@ function turnHtml(t) {
   const secs = t.ms ? (t.ms / 1000) : 0;
   const slow = secs >= 20 ? ` <span class="slow" title="这一轮比其它人慢很多">${secs.toFixed(1)}s 慢</span>`
                          : (secs ? ` <span class="tk">${secs.toFixed(1)}s</span>` : '');
+  // P18：总耗时里有多少是"等第一个字"。12s 里 11s 是等待，和 12s 都在输出，
+  // 是两种完全不同的问题（前者查通路，后者查模型），界面必须分得开。
+  const ttf = t.ttft_ms ? ` <span class="firsttok" title="第一个字等了 ${(t.ttft_ms / 1000).toFixed(1)}s">首字 ${(t.ttft_ms / 1000).toFixed(1)}s</span>` : '';
   const tm = new Date((t.ts || 0) * 1000).toLocaleTimeString('zh-CN', {hour12: false});
   // G4：每句话带上它出自哪个模型。同一个人换过模型后正文风格会跳变，
   // 没有这个戳就只能靠猜；猜错的复盘比没复盘更糟。
@@ -144,7 +147,7 @@ function turnHtml(t) {
     <div class="av" style="background-color:${color}">${esc(initials(t.name))}</div>
     <div class="body">
       <div class="who"><span class="nm">${esc(t.name)}</span>
-        <span class="tm">${tm}</span>${mdl}${tk}${slow}</div>
+        <span class="tm">${tm}</span>${mdl}${ttf}${tk}${slow}</div>
       <div class="txt">${md(t.text)}</div>
     </div>
   </div>`;
@@ -156,6 +159,9 @@ function renderAll() {
   logEl.innerHTML = state.turns.map(turnHtml).join('');
   renderAgents();
   setBusy(state.running);
+  // P18：预算倒计时和耗时面板。state 是本文件的顶层 let，外部脚本看不到，
+  // 所以由这里主动递一份，而不是让 p18 去猜 window.state。
+  if (window.P18Latency) window.P18Latency.onState(state);
   scrollBottom();
 }
 
@@ -229,6 +235,9 @@ function handle(m) {
   if (m.type === 'notice') {
     statusEl.textContent = m.text || '有一轮被拦下';
     statusEl.style.color = m.level === 'warn' ? 'var(--warn)' : 'var(--dim)';
+    // P18 认「这场到点了」这句播报来决定要不要摆「让它继续」。这句话本来
+    // 就是给人看的，再往 state 里加一个布尔只会出现两处不同步。
+    if (window.P18Latency) window.P18Latency.onNotice(m);
     clearTimeout(window.__noticeTimer);
     window.__noticeTimer = setTimeout(() => {
       statusEl.textContent = state && state.running ? 'agents 发言中…' : '就绪';
@@ -246,7 +255,7 @@ function handle(m) {
     return;
   }
   if (m.type === 'turn_start') {
-    live[m.agent] = {name: m.name, text: '', tools: []};
+    live[m.agent] = {name: m.name, text: '', tools: [], startedAt: performance.now()};
     const old = document.getElementById('live-' + m.agent);
     if (old) old.remove();
     liveEl(m.agent);
@@ -255,9 +264,22 @@ function handle(m) {
   }
   if (m.type === 'chunk') {
     const el = liveEl(m.agent);
+    const rec = live[m.agent];
+    // 第一个 chunk 的到达时刻 = 「等了多久才开始看到字」。没有它，页面上
+    // 只有总耗时，用户分不清「它在想要说什么」和「它在等什么别的东西」。
+    if (rec && rec.startedAt && !rec.firstTokMs) {
+      rec.firstTokMs = performance.now() - rec.startedAt;
+      const who = el.querySelector('.who');
+      if (who) {
+        const s = document.createElement('span');
+        s.className = 'firsttok';
+        s.textContent = '首字 ' + (rec.firstTokMs / 1000).toFixed(1) + 's';
+        who.appendChild(s);
+      }
+    }
     const txt = el.querySelector('.txt');
-    const cur = (live[m.agent] && live[m.agent].text || '') + (m.text || '');
-    if (live[m.agent]) live[m.agent].text = cur;
+    const cur = (rec && rec.text || '') + (m.text || '');
+    if (rec) rec.text = cur;
     txt.innerHTML = md(cur) + '<span class="caret"></span>';
     scrollBottom();
     return;

@@ -51,7 +51,10 @@
   var TABS = [
     { key: 'cfg',   label: '配置', sel: '.p1-config' },
     { key: 'skill', label: '技能', sel: '#p3-skills' },
-    { key: 'perf',  label: '算力', sel: '#p16-perf' }
+    { key: 'perf',  label: '算力', sel: '#p16-perf' },
+    // P18：审计里算出来的真实耗时（中位/p90/样本）。和「算力」分开是因为
+    // 它们回答两个问题——tok/s 是模型能力，中位耗时是这场对话里的实际等待。
+    { key: 'slow',  label: '慢在哪', sel: '#p18-latency' }
   ];
 
   var lastOverlay = null;

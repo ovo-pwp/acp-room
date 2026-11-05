@@ -252,3 +252,77 @@ def budget_steps(n_agents: int, rounds: int, max_per_agent: int = 3) -> int:
     n = max(1, int(n_agents))
     r = max(1, int(rounds))
     return min(n * r + max(2, n), n * max_per_agent * 2)
+
+
+@dataclass
+class TurnBatch:
+    """下一步：一个 batch 里的人**并行**跑。
+
+    为什么允许并行：一句「@pi @omp 你们俩怎么看」同时点了两个人，这两个人之间
+    **没有先后依赖**——他们看的都是同一份上文。并行跑等于把两条互不相干的等待
+    叠成一条，实测 33.2s + 18.7s 变 33.2s。
+
+    有依赖的那些（上一句在跟某人说话，下一句要接他的话）仍然是一个人一步，串行。
+    """
+
+    speakers: list[str]
+    reason: str          # batch | addressed | opening
+    detail: str = ""     # 人话解释，进审计
+
+    def as_dict(self) -> dict:
+        return {"speakers": self.speakers, "reason": self.reason, "detail": self.detail}
+
+
+def parse_batch(text: str, roster: Sequence[tuple[str, str]],
+                speaker: str = "") -> list[str]:
+    """一句里被 @ 到的**所有人**（去重、排除说话者自己、歧义的名字丢掉）。
+
+    和 `parse_addressee` 的区别是那个只回第一个 —— 那是"接话"语义（一个人往下说），
+    这里要的是"这句话同时点了谁"。两个都得留着：拿第一个当批次，就会把
+    「@pi @omp」的批变成只有 pi， omp 白白没被叫。
+    """
+    if not text:
+        return []
+    out: list[str] = []
+    for tok in _AT.findall(text):
+        who = match_name(tok, roster)
+        if who and who != speaker and who not in out:
+            out.append(who)
+    return out
+
+
+def next_step(*, last_text: str, last_speaker: str,
+              roster: Sequence[tuple[str, str]],
+              spoke: dict[str, int],
+              attempts: dict[str, int] | None = None,
+              max_per_agent: int = 3,
+              tried: dict[str, int] | None = None,
+              pending: Sequence[str] = ()) -> TurnBatch | None:
+    """这一步该哪些人说话。返回 None = 本场结束。
+
+    规则还是 `next_speaker` 那三条（点名 / 补位 / 都开过场就结束），只是把
+    "一句 @ 到多个人" 单独抬成一步并行 —— 判定全在纯函数里，不调模型、可测、可解释。
+    """
+    step = next_speaker(
+        last_text=last_text, last_speaker=last_speaker, roster=roster,
+        spoke=spoke, attempts=attempts, max_per_agent=max_per_agent,
+        tried=tried, pending=pending)
+    if step is None:
+        return None
+    ids = [i for i, _ in roster]
+
+    def can(a: str) -> bool:
+        return (a in ids
+                and (attempts if attempts is not None else spoke).get(a, 0) < max_per_agent
+                and not (tried or {}).get(a, 0))
+
+    # 只有"上一句真的 @ 了至少两个人"才成批。补位/接话一律一步一个人。
+    # `pending` 非空时更不成批：那是调用方（人点名 / @all）已经排好队了，
+    # 替他改成并行等于改了发言名单——审计里会显示"这两个人同时被叫"，
+    # 而实际是那个人叫的，事后查不到谁的决定。
+    pair = parse_batch(last_text, roster, speaker=last_speaker)
+    if len(pair) > 1 and step.reason == "addressed" and not pending:
+        batch = [a for a in pair if can(a)]
+        if len(batch) > 1:
+            return TurnBatch(batch, "batch", f"上一句同时点到 {'、'.join(batch)}，并行跑")
+    return TurnBatch([step.speaker], step.reason, step.detail)

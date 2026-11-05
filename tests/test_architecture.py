@@ -49,6 +49,7 @@ PURE = [
     "memory.py",         # 房间记忆：只有文件 IO，不碰 room / ACP
     "agent_memory.py",   # 推进 agent 自己的记忆文件：只有 stdlib 文件 IO，落点各家不同
     "reply_guard.py",    # 回复守卫：判一条输出是不是"真的在说话"，纯正则 + json
+    "perf.py",           # 速度读数：对审计行做分位数统计，纯 stdlib
 ]
 
 HOST_MODULES = {"room", "server"}

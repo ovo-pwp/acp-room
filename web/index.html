@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>ACP Room — 多个 AI 一个房间</title>
-<link rel="stylesheet" href="/static/style.css?v=20261104-g6">
+<link rel="stylesheet" href="/static/style.css?v=20261105-p20">
 </head>
 <body>
 <aside>
@@ -16,7 +16,7 @@
   <!-- P3 技能面板挂载点（codex 交付，p3-skills.js 自动 mount 到这里） -->
   <div id="p3-skills"></div>
   <div class="aside-actions">
-    <button id="rail-btn" class="rail-btn" title="模型配置 / 技能 / 算力（Esc 收起）">⚙ 设置与面板</button>
+    <button id="rail-btn" class="rail-btn" title="模型配置 / 技能 / 算力 / 慢在哪（Esc 收起）">⚙ 设置与面板</button>
     <button onclick="reconnect()">重连全部 agent</button>
     <button onclick="exportMd()">导出 markdown</button>
     <button onclick="promoteMemory()" title="把房间的讨论结论写进各 agent 自己的长期记忆文件（生效时机是它们的下一次会话）">存进各 agent 记忆</button>
@@ -50,29 +50,31 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=20261104-g6"></script>
+<script src="/static/app.js?v=20261105-p20"></script>
 <!-- P1 模型与配置选择器（claude 交付，独立文件，不依赖 app.js 内部变量） -->
-<script src="/static/p1-config.js?v=20261104-g6"></script>
+<script src="/static/p1-config.js?v=20261105-p20"></script>
 <!-- P2 讨论引擎面板：阶段轨道 + 讨论法/预算控件（omp 交付，自开 WS 收 notice） -->
-<script src="/static/p2-discuss.js?v=20261104-g6"></script>
+<script src="/static/p2-discuss.js?v=20261105-p20"></script>
 <!-- P3 技能面板：需配合上面 <div id="p3-skills">（codex 交付） -->
-<script src="/static/p3-skills.js?v=20261104-g6"></script>
+<script src="/static/p3-skills.js?v=20261105-p20"></script>
 <!-- P7 活动/审计侧栏 + 工具卡片（claude 交付；CSS 由 JS 自己注入） -->
-<script src="/static/p7-audit.js?v=20261104-g6"></script>
-<script src="/static/p7-cards.js?v=20261104-g6"></script>
+<script src="/static/p7-audit.js?v=20261105-p20"></script>
+<script src="/static/p7-cards.js?v=20261105-p20"></script>
 <!-- P9 内联审批（claude 交付；样式内嵌本文件） -->
-<script src="/static/p9-inline.js?v=20261104-g6"></script>
+<script src="/static/p9-inline.js?v=20261105-p20"></script>
 <!-- P11 @ 指定发言人：只叫被点到的人回话（避免一发消息全员起床） -->
-<script src="/static/p11-mention.js?v=20261104-g6"></script>
+<script src="/static/p11-mention.js?v=20261105-p20"></script>
 <!-- P12 讨论模式：把 P2 讨论引擎变成默认路径（说话/讨论 切换） -->
-<script src="/static/p12-mode.js?v=20261104-g6"></script>
+<script src="/static/p12-mode.js?v=20261105-p20"></script>
 <!-- P13 健康面板：一屏看清状态、慢在哪、哪个配置不对 -->
-<script src="/static/p13-health.js?v=20261104-g6"></script>
+<script src="/static/p13-health.js?v=20261105-p20"></script>
 <!-- P14 添加/删除 agent + 发图片（独立文件） -->
-<script src="/static/p14-agents-media.js?v=20261104-g6"></script>
+<script src="/static/p14-agents-media.js?v=20261105-p20"></script>
 <!-- P16 算力对比面板（claude 交付；样式内嵌本文件） -->
-<script src="/static/p16-perf.js?v=20261104-g6"></script>
+<script src="/static/p16-perf.js?v=20261105-p20"></script>
+<!-- P18 慢在哪：审计里的真实耗时（中位/p90/样本）+ 本条预算倒计时 -->
+<script src="/static/p18-latency.js?v=20261105-p20"></script>
 <!-- P17 外壳：右侧面板互斥 + 侧栏分区折叠。必须最后加载（要等 p7/p13 建好 DOM） -->
-<script src="/static/p17-shell.js?v=20261104-g6"></script>
+<script src="/static/p17-shell.js?v=20261105-p20"></script>
 </body>
 </html>

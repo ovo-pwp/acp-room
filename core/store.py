@@ -148,6 +148,9 @@ class Store:
                 badge.append(f"{r['tokens']} tok")
             if r.get("ms"):
                 badge.append(f"{r['ms'] / 1000:.1f}s")
+            # 首字耗时和总耗时一起看才知道慢在哪：前者大是等，后者大是想。
+            if r.get("ttft_ms"):
+                badge.append(f"首字 {r['ttft_ms'] / 1000:.1f}s")
             # sessionId 前缀：导出稿里也能看出「这条和上一条不是同一个会话」。
             if r.get("session"):
                 badge.append(f"sess {str(r['session'])[:8]}")

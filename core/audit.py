@@ -108,6 +108,7 @@ class Audit:
             "rule": str(rule),
             "initiator": str(fields.get("initiator") or "person"),
             "ms": int(fields.get("ms") or 0),
+            "ttft_ms": int(fields.get("ttft_ms") or 0),
             # 产出这条记录的 ACP 会话。必须在这里显式保留：_normalize 是白名单，
             # 不在名单里的 kwarg 会被静默丢掉——曾经 session= 就是这么消失的，
             # 于是「每条发言都留痕」变成「留痕里看不出是哪次会话」。

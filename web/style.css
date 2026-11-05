@@ -308,6 +308,12 @@ main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
   padding: 0 5px;
 }
 .who .slow { color: var(--warn); font-size: var(--fs-xs); }
+/* P18：首字耗时。刻意比 .tk 淡、比 .slow 显眼度低——它是诊断信息，
+   不是每句都要看的重点；「慢」的判定仍然只看总耗时。 */
+.who .firsttok {
+  color: var(--dim); font-size: var(--fs-xs); font-variant-numeric: tabular-nums;
+  border-left: 1px solid var(--line); padding-left: var(--sp-2);
+}
 
 .txt { white-space: pre-wrap; word-break: break-word; }
 .txt code {

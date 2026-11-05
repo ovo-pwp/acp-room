@@ -104,6 +104,10 @@ class Turn:
     tokens: int = 0
     status: str = "ok"  # ok | error | cancelled | wait（agent 主动放弃本轮）
     ms: int = 0         # 这一轮花了多久
+    # 从发出 prompt 到**第一个字**到达的耗时。和 ms 分开记是因为它们是两种病：
+    # ms 大 = 它想得久/话多；ttft 大 = 它压根没开始（排队、适配器僵、网关慢）。
+    # 只有 ms 的话，「慢在等」和「慢在想」在数据里长得一模一样，改不动方向。
+    ttft_ms: int = 0
     # 这一轮是哪个 ACP 会话产出的。换模型/重启/进程崩过都会换 sessionId，
     # 而 sessionId 一变就意味着 agent 侧上下文清零——光看正文看不出来。
     session: str = ""
@@ -177,6 +181,10 @@ class Room:
         # 会让 agent 在完全不同的地方读写文件——这种差异很难在日志里看出来。
         self.cwd: str = self._resolve_cwd(cfg.get("cwd") or ".", root)
         self.turn_timeout: int = cfg.get("turn_timeout", 900)
+        # 单轮上限按 agent 覆盖（`agents[].turn_timeout`）。实测同一间房里
+        # claude 一轮 4.5s、codex 39.8s —— 只有一个全局数字时，调小会掐死快的，
+        # 调大管不住慢的，所以慢的那家单独设限。
+        self.turn_caps: dict[str, int] = {}
 
         self.agents: dict[str, AcpAgent] = {}
         self.specs: dict[str, AgentConfig] = {}
@@ -198,6 +206,8 @@ class Room:
                 style=a.get("style", ""),
             )
             self.specs[spec.id] = spec
+            if a.get("turn_timeout"):
+                self.turn_caps[spec.id] = int(a["turn_timeout"])
             self.agents[spec.id] = AcpAgent(spec, self._on_update, self._on_permission)
 
         self.order: list[str] = list(self.specs)
@@ -219,6 +229,12 @@ class Room:
         self.status: dict[str, str] = {aid: "未连接" for aid in self.agents}
         # 每个 agent 正在流式输出的内容，用于界面实时显示
         self.streaming: dict[str, str] = {}
+        # agent -> 本轮第一个 chunk 到达的时刻。_execute 在发 prompt 前清空，
+        # _on_update 用 setdefault 只记第一次 —— 它就是 TTFT 的原料。
+        self.first_chunk: dict[str, float] = {}
+        # agent -> 本轮开始时刻。ACP 回调是从别的任务里进来的，拿不到 _execute 的
+        # 局部 t0，而 tool_call 那行审计要写「此刻已经花了多久」，只能挂在 self 上。
+        self.turn_t0: dict[str, float] = {}
         # P6 修复：toolCallId -> {tool, title}。tool_call_update 不带 kind/title，
         # 靠它把结果对回发起时的名字，否则审计里全是 unknown。
         self.inflight_tools: dict[str, dict] = {}
@@ -265,6 +281,14 @@ class Room:
         # 自由模式下单人在一场里最多尝试几次。上限是必需的：
         # A 问 B、B 反问 A 会自己绕圈。
         self.conv_max_per_agent: int = int(conv.get("max_per_agent") or 3)
+        # 整场墙钟预算（秒）。turn_timeout 只管**单次** prompt，而自由发言是一场里
+        # 串十几步：实测一句「开报个数」串了 4 分 28 秒，人在外面等着，界面还显示
+        # "发言中"。步数上限防的是绕圈，防不住"每一步都不超时但加起来很长"——
+        # 那需要一条墙钟线。0 = 不设（旧行为）。
+        self.run_budget: int = int(conv.get("run_budget_seconds") or 0)
+        # 本场开始时刻。每次人说话都重置——预算管的是「我这一句会让全场跑多久」，
+        # 不是「这台机器开机以来聊了多久」。
+        self.run_started: float = 0.0
         # 整轮看门狗（秒）。公式和理由见 core.convergence.watchdog_seconds：
         # turn_timeout 只管单次 prompt，管不了"一个 await 永不返回 → run()
         # 永不返回 → finally 永不执行 → 房间锁死"。实测卡过 16 分钟。
@@ -317,6 +341,7 @@ class Room:
                     tokens=int(r.get("tokens") or 0),
                     status=r.get("status") or "ok",
                     ms=int(r.get("ms") or 0),
+                    ttft_ms=int(r.get("ttft_ms") or 0),
                     # 落盘时就盖好的两个戳，重启后必须原样读回来。丢了它们的话，
                     # 「这条是谁用哪个模型、哪次会话说的」在重启后就查不到了。
                     session=r.get("session") or "",
@@ -354,6 +379,15 @@ class Room:
             "cwd": self.cwd,
             "order": self.order,
             "running": self.running,
+            # 本条还剩多少秒（自由发言的墙钟预算）。不在场上 / 没设预算 = None，
+            # 界面要显示「—」而不是 0 —— 0 会被读成「刚到期」。
+            "budget_left_seconds": (
+                max(0, int(self.run_budget - (time.time() - self.run_started)))
+                if (self.run_budget and self.running and self.run_started > 0)
+                else None),
+            # 哪些 agent id 该进「各家的速度」。加新人不用改前端，
+            # 否则界面永远是一张写死四个人的表。
+            "perf_agent_ids": list(self.order),
             "turns": [t.__dict__ for t in self.transcript],
             "count": len(self.transcript),
             "opts": self.opts.snapshot() if full_opts else self.opts.brief(),
@@ -510,6 +544,7 @@ class Room:
         if kind == "agent_message_chunk":
             txt = text_of_update(update)
             if txt:
+                self.first_chunk.setdefault(aid, time.time())
                 self.streaming[aid] = self.streaming.get(aid, "") + txt
                 await self.broadcast({"type": "chunk", "agent": aid, "text": txt})
         elif kind == "tool_call":
@@ -538,7 +573,11 @@ class Room:
             if dec.kind != "allow" and tcid:
                 # 记下来，供 tool_call_update 回填同一判定（结果行要和决定行对上）
                 self.inflight_tools.setdefault(tcid, {})["decision"] = dec
-            await self.audit.write(agent=aid, turn_seq=self.seq, event="tool_call", tool=tkind, title=ttitle, status="pending", decision=dec.kind, rule=dec.rule, initiator=self._initiator, toolCallId=tcid)
+            await self.audit.write(agent=aid, turn_seq=self.seq, event="tool_call", tool=tkind, title=ttitle, status="pending", decision=dec.kind, rule=dec.rule, initiator=self._initiator, toolCallId=tcid,
+                                   # 带上线程已有的两个耗时：工具是从这一刻开始占时间的。
+                                   # 光看发言的 ms 会把「模型在想」和「工具在跑」混成一个数字
+                                   # ——实测 omp 那句 24.2s 里 21.5s 是工具，界面却显示 2.7s。
+                                   ms=self.turn_elapsed(aid), ttft_ms=self.turn_ttft(aid))
         elif kind == "tool_call_update":
             # 从发起时记住的字段补齐 kind/title（update 里通常没有）
             tcid = update.get("toolCallId")
@@ -752,6 +791,21 @@ class Room:
             log(f"[{aid}] 本轮附带 {len(images)} 张图片")
         return prompt, images
 
+    def turn_timeout_for(self, aid: str) -> int:
+        """这一家本轮最多等多久。没单独设限就用全局值。"""
+        return int(self.turn_caps.get(aid) or self.turn_timeout)
+
+    def turn_elapsed(self, aid: str) -> int:
+        """本轮已经跑了多久（毫秒）。不在轮里就是 0，不猜。"""
+        t0 = self.turn_t0.get(aid)
+        return int((time.time() - t0) * 1000) if t0 else 0
+
+    def turn_ttft(self, aid: str) -> int:
+        """本轮第一个字多久到的（毫秒）。还没开口 = 0。"""
+        t0 = self.turn_t0.get(aid)
+        first = self.first_chunk.get(aid)
+        return int((first - t0) * 1000) if (t0 and first) else 0
+
     async def _execute(self, aid: str, prompt: str, initiator: str = "person",
                        images: list[dict] | None = None) -> Turn:
         """跑一轮，返回 Turn。不写进 transcript（由调用方决定顺序）。
@@ -763,10 +817,22 @@ class Room:
         self._initiator = initiator
         agent = self.agents[aid]
         spec = self.specs[aid]
+        cap = self.turn_timeout_for(aid)
         t0 = time.time()
+        # 上一轮的 TTFT 残留会让这一轮"看起来一秒就开口"，必须先清。
+        self.first_chunk.pop(aid, None)
+        self.turn_t0[aid] = t0
         wait_retried = False          # 被点名时的强制追问只做一次
+
+        def spent() -> int:
+            return int((time.time() - t0) * 1000)
+
+        def ttft() -> int:
+            first = self.first_chunk.get(aid)
+            return int((first - t0) * 1000) if first else 0
+
         try:
-            res = await agent.prompt(prompt, timeout=self.turn_timeout, images=images)
+            res = await agent.prompt(prompt, timeout=cap, images=images)
             # 这一枪打出去了 = agent 侧这个会话从此有内容可恢复（见 self.spoke 注释）。
             self.spoke.add(aid)
             text = clean_text(self.streaming.get(aid, "").strip())
@@ -794,39 +860,43 @@ class Room:
                     "这一轮人类点名要你回答，你刚才回了「没有内容可说」。"
                     "现在直接给出你的回答：用你自己的判断说一句实质内容，"
                     "不要再说没有内容，不要解释你为什么之前没说。",
-                    timeout=self.turn_timeout, images=images)
+                    timeout=cap, images=images)
                 text = clean_text(self.streaming.get(aid, "").strip())
                 _why = ctx.wait_reason(text, _WAIT_RE)
 
             if _why is not None:
                 why = _why
-                log(f"[{aid}] 本轮 wait：{why}")
+                ms, tf = spent(), ttft()
+                log(f"[{aid}] 本轮 wait（{ms / 1000:.1f}s）：{why}")
                 await self.audit.write(
                     agent=aid, turn_seq=self.seq, event="turn_wait",
                     tool="wait", title=why, status="ok", decision="allow",
                     rule=("被点名但两次都拒绝回答" if aid in self._addressed
                           else "agent 主动表示本轮无新增内容"),
                     initiator=initiator, session=agent.session_id or "",
+                    ms=ms, ttft_ms=tf,
                 )
                 self.status[aid] = "在线"
                 return Turn(seq=0, speaker=aid, name=spec.name, text="", ts=time.time(),
-                            status="wait", ms=int((time.time() - t0) * 1000))
+                            status="wait", ms=ms, ttft_ms=tf)
             if not text:
                 # 空正文 ≠ 说话。以前这里填一句占位文本就当 ok 发出去，转录里
                 # 长得和真回答一样，翻记录根本看不出「它其实一个字没说」——
                 # 实测 pi 因为网关 401 连续两轮空正文，全被记成 ok。
                 # 现在标成 empty：不占别人的上下文，但审计里可查、界面能区分。
                 log(f"[{aid}] 空正文（stopReason={res.get('stopReason')}），记为 empty")
+                ms, tf = spent(), ttft()
                 await self.audit.write(
                     agent=aid, turn_seq=self.seq, event="turn_empty",
                     tool="prompt", title=str(res.get("stopReason") or ""),
                     status="empty", decision="allow",
                     rule="模型返回空正文（没说话，也没声明 [WAIT]）",
                     initiator=initiator, session=agent.session_id or "",
+                    ms=ms, ttft_ms=tf,
                 )
                 self.status[aid] = "在线"
                 return Turn(seq=0, speaker=aid, name=spec.name, text="", ts=time.time(),
-                            status="empty", ms=int((time.time() - t0) * 1000))
+                            status="empty", ms=ms, ttft_ms=tf)
             # 回复守卫：错误文本 / traceback / tool-call 原文都不是发言。
             # 它们写进转录之后跟正常回答长得一样，还会被**别的 agent 当成内容引用**
             # ——实测 claude 和 pi 真的围绕 omp 那条 401 讨论了好几轮。
@@ -835,6 +905,7 @@ class Room:
                 text, stop_reason=str(res.get("stopReason") or ""))
             if verdict.blocked:
                 log(f"[{aid}] 回复被拦下（{verdict.kind}）：{verdict.reason}")
+                ms, tf = spent(), ttft()
                 await self.audit.write(
                     agent=aid, turn_seq=self.seq, event="turn_blocked",
                     tool="guard", title=verdict.kind, status="blocked",
@@ -843,6 +914,7 @@ class Room:
                     # **误杀就永远无法复核**。脱敏后再写，防止二次泄漏。
                     rule=f"{verdict.reason}；原文：{reply_guard.redact(text)}",
                     initiator=initiator, session=agent.session_id or "",
+                    ms=ms, ttft_ms=tf,
                 )
                 await self.broadcast({
                     "type": "notice", "level": "warn", "agent": aid,
@@ -851,11 +923,12 @@ class Room:
                 })
                 self.status[aid] = "在线"
                 return Turn(seq=0, speaker=aid, name=spec.name, text="", ts=time.time(),
-                            status="blocked", ms=int((time.time() - t0) * 1000))
+                            status="blocked", ms=ms, ttft_ms=tf)
             usage = res.get("usage") or {}
+            ms, tf = spent(), ttft()
             turn = Turn(seq=0, speaker=aid, name=spec.name, text=text, ts=time.time(),
                         tokens=int(usage.get("totalTokens") or 0),
-                        ms=int((time.time() - t0) * 1000))
+                        ms=ms, ttft_ms=tf)
             self.status[aid] = "在线"
             # 上下文压缩统计。只在**真的压缩过**时写一行——没压缩就写等于噪音。
             plan = getattr(self, "_last_plan", None)
@@ -870,21 +943,38 @@ class Room:
                 self._last_plan = None
         except AcpError as exc:
             turn = Turn(seq=0, speaker=aid, name=spec.name,
-                        text=f"⚠ ACP 错误：{exc}", ts=time.time(), status="error")
+                        text=f"⚠ ACP 错误：{exc}", ts=time.time(), status="error",
+                        ms=spent(), ttft_ms=ttft())
             self.status[aid] = "出错"
         except asyncio.TimeoutError:
+            ms, tf = spent(), ttft()
             turn = Turn(seq=0, speaker=aid, name=spec.name,
-                        text=f"⚠ 超时（{self.turn_timeout}s），已中断", ts=time.time(),
-                        status="cancelled")
+                        text=f"⚠ 超时（{cap}s），已中断", ts=time.time(),
+                        status="cancelled", ms=ms, ttft_ms=tf)
             self.status[aid] = "超时"
-            await agent.cancel()
+            # ttft=0 和 ttft>0 是两种完全不同的故障，而这个区分只有这里能记：
+            # 0 = 它一个字都没开始（排队 / 适配器僵 / 网关没响应）；
+            # >0 = 它说了半句然后停在那（模型侧断流、工具卡住）。
+            await self.audit.write(
+                agent=aid, turn_seq=self.seq, event="turn_timeout",
+                tool="prompt", title=f"{cap}s", status="cancelled", decision="allow",
+                rule=(f"单轮上限 {cap}s 到点：{'一个字都没开始' if tf == 0 else f'已开始 {tf / 1000:.1f}s，说了半句就停'}"),
+                initiator=initiator, session=agent.session_id or "",
+                ms=ms, ttft_ms=tf,
+            )
+            try:
+                await agent.cancel()
+            except Exception as exc:  # noqa: BLE001
+                log(f"[{aid}] 超时后 cancel 失败：{type(exc).__name__}: {exc}")
         except Exception as exc:  # noqa: BLE001
             turn = Turn(seq=0, speaker=aid, name=spec.name,
-                        text=f"⚠ {type(exc).__name__}: {exc}", ts=time.time(), status="error")
+                        text=f"⚠ {type(exc).__name__}: {exc}", ts=time.time(), status="error",
+                        ms=spent(), ttft_ms=ttft())
             self.status[aid] = "出错"
         finally:
             # 还原，避免 initiator 泄漏到下一轮（下一轮可能是人类打字）
             self._initiator = prev_initiator
+            self.turn_t0.pop(aid, None)
             # agent 进程如果在本轮死过又重启，session_id 已经换了；
             # 每轮结束都落一次盘（一个小 JSON），下次启动才接得上。
             self.persist_sessions()
@@ -1067,6 +1157,32 @@ class Room:
     def _last_human_text(self) -> str:
         return ctx.last_human_text(self.transcript)
 
+    async def _close_budget(self, roster, spoke: dict[str, int],
+                            attempts: dict[str, int], initiator: str) -> None:
+        """墙钟到点：停下，并把"是谁还没轮到、谁在拖"说清楚。
+
+        播报里点名叫人，是因为**不点名这条消息就没法行动**——「到点了」只说明
+        发生了什么，「Pi、OMP 还没轮到」才说明接下来该干什么。
+        """
+        left = [name for aid, name in roster if not spoke.get(aid)]
+        slow = [name for aid, name in roster if attempts.get(aid, 0) >= self.conv_max_per_agent]
+        spent_for = int(time.time() - self.run_started)
+        detail = f"{spent_for}s > {self.run_budget}s"
+        if left:
+            detail += f"；还没轮到 {'、'.join(left)}"
+        if slow:
+            detail += f"；已达单人上限 {'、'.join(slow)}"
+        log(f"[自由发言] {detail}")
+        await self.audit.write(
+            agent="arbiter", turn_seq=self.seq, event="run_budget",
+            tool="budget", title=f"{self.run_budget}s", status="ok", decision="allow",
+            rule=detail, initiator=initiator,
+        )
+        await self.announce(
+            f"这场到点了（上限 {self.run_budget} 秒）"
+            + (f"：{'、'.join(left)} 还没轮到。" if left else "。")
+            + "点「让它继续」接着说。")
+
     async def _free_session(self, *, note: str, initiator: str,
                             rounds: int, opening_ids: list[str]) -> None:
         """自由发言：顺序由对话决定，一人可说多次，也可以不说。
@@ -1109,53 +1225,77 @@ class Room:
         tried: dict[str, int] = {a: 0 for a, _ in roster}
         budget = tt.budget_steps(len(roster), rounds, self.conv_max_per_agent)
         log(f"[自由发言] 开始：{len(roster)} 人，上限 {budget} 步，"
-            f"单人上限 {self.conv_max_per_agent} 次")
+            f"单人上限 {self.conv_max_per_agent} 次"
+            + (f"，本条墙钟 {self.run_budget}s" if self.run_budget else ""))
 
         step = None
         if opening_ids:
             step = tt.Step(opening_ids[0], "addressed", "人类这一句点名由它开场")
         if step is None:
             step = tt.opening(roster=roster, activity=self._activity())
+        batch = tt.TurnBatch([step.speaker], step.reason, step.detail) if step else None
 
         pick_history: list[str] = []
         for i in range(budget):
-            if not self.running or step is None:
+            if not self.running or batch is None:
                 break
-            aid = step.speaker
-            if aid not in self.agents:
+            # 墙钟预算。步数上限防的是绕圈，防不住"每步都不超时、加起来四分钟"
+            # ——实测一句「开报个数」串了 4 分 28 秒。到点就收，剩下的如实报出来，
+            # 让人决定要不要继续，而不是让房间背着一条没人要的长链。
+            if self.run_budget and (time.time() - self.run_started) > self.run_budget:
+                await self._close_budget(roster, spoke, attempts, initiator)
                 break
-            attempts[aid] = attempts.get(aid, 0) + 1
-            pick_history.append(step.reason)
-            # 被点名者必须回答：复用已有的"强制追问一次"逻辑
-            self._addressed = {aid} if step.reason == "addressed" else set()
-            await self.audit.write(
-                agent=aid, turn_seq=self.seq, event="turn_pick",
-                tool="turntaking", title=aid, status="ok", decision="allow",
-                rule=f"{step.reason}: {step.detail}",
-                initiator=initiator,
-            )
-            log(f"[自由发言] 第 {i + 1}/{budget} 步 → {aid}（{step.reason}：{step.detail}）")
-            turn = await self._one_turn(aid, note if i == 0 else "",
-                                        initiator=initiator)
-            if turn.status in ("wait", "empty", "blocked"):
-                # 没说话就不算"说过"，也不拿空正文去解析下一个发言人。
-                last = ""
-                if turn.status in ("empty", "blocked"):
-                    # 但"轮到过却没说"要记下来：否则一个故障 agent
-                    # 会永远留在补位候选里被反复挑中。
-                    # blocked 也算——模型吐的是错误，不是内容，下一句不该接它。
-                    tried[aid] = tried.get(aid, 0) + 1
+            ids = [a for a in batch.speakers if a in self.agents]
+            if not ids:
+                break
+            for aid in ids:
+                attempts[aid] = attempts.get(aid, 0) + 1
+                await self.audit.write(
+                    agent=aid, turn_seq=self.seq, event="turn_pick",
+                    tool="turntaking", title=aid, status="ok", decision="allow",
+                    rule=f"{batch.reason}: {batch.detail}",
+                    initiator=initiator,
+                )
+            pick_history.append(batch.reason)
+            # 被点名者必须回答：复用已有的"强制追问一次"逻辑。
+            # 批次里的人全都被点名过，所以整批都不许用退出口。
+            self._addressed = set(ids) if batch.reason in ("addressed", "batch") else set()
+            log(f"[自由发言] 第 {i + 1}/{budget} 步 → {'＋'.join(ids)}"
+                f"（{batch.reason}：{batch.detail}）")
+            # 一步里多人 = 同一份上文并行跑（他们之间没有先后依赖）。
+            # 一个人就是原来的 _one_turn，语义和改动前完全一致。
+            if len(ids) > 1:
+                await self.audit.write(
+                    agent="arbiter", turn_seq=self.seq, event="turn_batch",
+                    tool="turntaking", title="＋".join(ids), status="ok", decision="allow",
+                    rule=batch.detail, initiator=initiator,
+                )
+                turns = await self._parallel_round(ids, note if i == 0 else "",
+                                                  initiator=initiator)
             else:
-                spoke[aid] = spoke.get(aid, 0) + 1
-                last = turn.text or ""
-            step = tt.next_speaker(
-                last_text=last, last_speaker=aid, roster=roster,
+                turns = [await self._one_turn(ids[0], note if i == 0 else "",
+                                              initiator=initiator)]
+            last, last_speaker = "", ids[-1]
+            for aid, turn in zip(ids, turns):
+                if turn.status in ("wait", "empty", "blocked"):
+                    # 没说话就不算"说过"，也不拿空正文去解析下一个发言人。
+                    last = ""
+                    if turn.status in ("empty", "blocked"):
+                        # 但"轮到过却没说"要记下来：否则一个故障 agent
+                        # 会永远留在补位候选里被反复挑中。
+                        # blocked 也算——模型吐的是错误，不是内容，下一句不该接它。
+                        tried[aid] = tried.get(aid, 0) + 1
+                else:
+                    spoke[aid] = spoke.get(aid, 0) + 1
+                    last, last_speaker = turn.text or "", aid
+            batch = tt.next_step(
+                last_text=last, last_speaker=last_speaker, roster=roster,
                 spoke=spoke, attempts=attempts,
                 max_per_agent=self.conv_max_per_agent, tried=tried)
             # 连续一整轮没人接别人的话 → 话题走平，收。
             # 不加这条的话补位规则会让循环走满 budget，那是"换了顺序的轮询"，
             # 不是自由发言。实测 4 人 rounds=3 会一路走满 12 步。
-            if step is not None and tt.went_flat(pick_history, roster):
+            if batch is not None and tt.went_flat(pick_history, roster):
                 log(f"[自由发言] 连续 {len(roster)} 步没人接话，话题走平，提前结束")
                 await self.audit.write(
                     agent="arbiter", turn_seq=self.seq, event="turn_flat",
@@ -1181,6 +1321,9 @@ class Room:
         仲裁不覆盖人的决定。
         """
         self.running = True
+        # 墙钟预算的起点。打在 run() 入口而不是只打在自由发言里：round 模式同样
+        # 会跑很久，界面那条"本条还剩几分"必须对两种模式都说得准。
+        self.run_started = time.time()
         await self.push_state()
         if speakers is None:
             grant = arbitrate(
@@ -1218,9 +1361,18 @@ class Room:
                     note=note, initiator=getattr(self, "_initiator", "person"),
                     rounds=rounds, opening_ids=list(ids))
                 return
+            roster = [(a, self.specs[a].name) for a in ids]
             for r in range(rounds):
                 if not self.running:
                     return
+                # 轮询模式同样吃墙钟预算。界面写的是"轮数"，但 4 人 × 3 轮
+                # 串行下来一样能跑到四分钟——只在自由发言里设预算等于漏掉默认路径。
+                if self.run_budget and (time.time() - self.run_started) > self.run_budget:
+                    await self._close_budget(roster,
+                                             {a: r for a, _ in roster},
+                                             {a: r for a, _ in roster},
+                                             getattr(self, "_initiator", "person"))
+                    break
                 round_note = note if r == 0 else ""
                 if self.parallel and len(ids) > 1:
                     await self._parallel_round(ids, round_note)

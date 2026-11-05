@@ -165,6 +165,16 @@ def _fake_room_for_run(mode):
     r.conv_max_per_agent = 3
     r._addressed = set()
 
+    # P1–P4 新加的属性。`Room.__new__` 的壳子缺一个就会在**别的**用例里炸
+    # （G5 加 self.spoke 时踩过同一个坑），所以一次补齐：
+    #   turn_caps / turn_t0 / first_chunk → _execute 的耗时记账
+    #   run_budget / run_started          → run() 入口的墙钟预算（0 = 不设限）
+    r.turn_caps = {}
+    r.turn_t0 = {}
+    r.first_chunk = {}
+    r.run_budget = 0
+    r.run_started = 0.0
+
     async def push_state():
         return None
 

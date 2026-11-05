@@ -21,6 +21,7 @@
     {
       "id": "codex",
       "name": "Codex",
+      "turn_timeout": 60,
       "cmd": [
         "npx",
         "-y",
@@ -53,7 +54,7 @@
     }
   ],
   "cwd": ".",
-  "turn_timeout": 900,
+  "turn_timeout": 120,
   "parallel_turns": true,
   "discussion": {
     "method": "standard",
@@ -117,9 +118,10 @@
     "targets": []
   },
   "conversation": {
-    "_doc": "mode=free 时顺序由对话决定（上一句点名谁谁接话）；round 是旧的固定轮转。max_per_agent 是单人在一场里的尝试上限，防 A 问 B、B 反问 A 绕圈。",
+    "_doc": "mode=free 时顺序由对话决定（上一句点名谁谁接话）；round 是旧的固定轮转。max_per_agent 是单人在一场里的尝试上限，防 A 问 B、B 反问 A 绕圈。run_budget_seconds 是**整场墙钟预算**：步数上限防绕圈，防不住「每步都不超时、加起来四分钟」——实测一句「开报个数」串了 4 分 28 秒。到点就收场并播报谁还没轮到，界面上出「让它继续」。0 = 不设。单轮超时可以按 agent 覆盖（agents[].turn_timeout），实测同一间房 claude 一轮 4.5s、codex 39.8s，一个全局数字要么掐死快的要么管不住慢的。",
     "mode": "free",
-    "max_per_agent": 3
+    "max_per_agent": 3,
+    "run_budget_seconds": 90
   },
   "agent_memory": {
     "_doc": "G6：把房间的讨论结论推进各 agent 自己的长期记忆文件（Claude 的 ~/.claude/CLAUDE.md、Codex 的 ~/.codex/AGENTS.md、omp 的 ~/.agents/AGENTS.md、pi 的 ~/.pi/agent/AGENTS.md、Hermes 的 memories/MEMORY.md）。auto_promote 只管讨论跑完自动写；界面上那颗按钮不受它管，人按下去本身就是同意。落点是别的程序在用的文件，所以默认关。生效时机是各 agent 的下一次会话，不是现在这一场。targets 可按 id 覆盖：{pi: {path: '~/.pi/agent/AGENTS.md', format: 'markdown'}}，Hermes 用 format=hermes（§ 条目 + 按字的预算）。keep/entry_chars 控制每个落点保几条、每条多少字。",

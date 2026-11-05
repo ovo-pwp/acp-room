@@ -99,6 +99,24 @@
       escalate: 'warn', deny: 'err', user_denied: 'err', ask: 'warn' })[decision] || 'dim';
   }
 
+  /* P18：耗时角标的颜色。判据和发言卡片(.who .slow)保持一致——
+     两处对「慢」的口径不一样，用户就会问到底信哪个。 */
+  if (!document.getElementById('p7-dur-css')) {
+    const st = document.createElement('style');
+    st.id = 'p7-dur-css';
+    st.textContent = `
+.p7-dur { color: var(--dim2); font-size: 10px; margin-left: auto;
+  font-variant-numeric: tabular-nums; }
+.p7-dur.warn { color: var(--warn); }
+.p7-dur.err { color: var(--err); }
+`;
+    document.head.appendChild(st);
+  }
+
+  function dclsDur(ms) {
+    return ms >= 60000 ? 'err' : (ms >= 20000 ? 'warn' : '');
+  }
+
   function renderRows(data) {
     const rows = (data.rows || []).slice().reverse();  // 最新在前
     const total = (data.stats && data.stats.total != null) ? data.stats.total : (data.count || 0);
@@ -108,12 +126,23 @@
     }
     for (const r of rows) {
       const t = new Date((r.ts || 0) * 1000).toLocaleTimeString('zh-CN', { hour12: false });
+      // P18：每条判定带上它实际耗了多久。之前这一栏只有事件名，
+      // 「谁慢」还得切到面板去看对时间戳——而审计行本来就有 ms / ttft_ms。
+      let dur = '';
+      if (r.ms) {
+        dur = `<span class="p7-dur ${dclsDur(r.ms)}" title="这一条跑了 ${(r.ms / 1000).toFixed(1)}s`
+          + (r.ttft_ms ? `，其中第一个字等了 ${(r.ttft_ms / 1000).toFixed(1)}s` : '')
+          + `">${(r.ms / 1000).toFixed(1)}s</span>`;
+      } else if (r.ttft_ms) {
+        dur = `<span class="p7-dur">首字 ${(r.ttft_ms / 1000).toFixed(1)}s</span>`;
+      }
       html += `<div class="p7-row ${r.status === 'error' ? 'p7-err' : ''}" title="${esc(r.rule || '')}">
         <div class="p7-row-top">
           <span class="p7-t">${t}</span>
           <span class="p7-a">${esc(r.agent)}</span>
           <span class="p7-e">${esc(r.event)}</span>
           <span class="p7-badge p7-d-${dcls(r.decision)}">${esc(r.decision || '?')}</span>
+          ${dur}
         </div>
         <div class="p7-row-title">${esc(r.title || r.tool || '')}</div>
       </div>`;

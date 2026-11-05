@@ -28,6 +28,8 @@ from core.agent_admin import AgentError, remove_agent, probe, upsert_agent, vali
 from core.agent_admin import PRESETS as AGENT_PRESETS  # noqa: E402
 from core.attachments import AttachmentError  # noqa: E402
 from core.gui_log import log  # noqa: E402
+# 别名是因为端点函数自己叫 perf()，直接 `from core import perf` 会被遮住。
+from core import perf as perf_  # noqa: E402
 from core.model_probe import ModelProber  # noqa: E402
 from room import Room  # noqa: E402
 
@@ -367,6 +369,34 @@ async def history(limit: int = 0) -> JSONResponse:
     if limit > 0:
         rows = rows[-limit:]
     return JSONResponse({"count": len(rows), "turns": rows})
+
+
+@app.get("/api/perf")
+async def perf(refresh: int = 0) -> JSONResponse:
+    """各家的速度读数（中位数 / p90 / 最长），按**全体**算。
+
+    为什么需要这个端点：界面上原来只报每家「最长一轮 Xs」，而那只是一个最大值。
+    实测按全体 416 条算，Codex 的最长那轮 87.2s 只排第 124 位，它的中位数 26.7s
+    反而比 Pi（30.3s）还快——「谁拖慢了房间」这个问题，拿 max 回答会答反。
+
+    发言（turn_end）不写审计，所以光读审计会**系统性漏掉发言**：实测 416 条
+    发言行只剩 53 条。`refresh=1` 时顺带读一次 turns.jsonl 把发言补进来
+    （只在这个面板打开时读，不在每次状态广播时读）。
+    """
+    rows = ROOM.audit.query(limit=5000)
+    if refresh:
+        rows = rows + ROOM.store.load()
+    # 端点名是 perf，所以这里不能写 `"agents": summarize(...)`——那会让
+    # 前端拿到 data.agents.agents，两个同名键指向不同的东西（外层是读数汇总，
+    # 内层才是每家一档）。名字分开：summary / per_agent。
+    summary = perf_.summarize(rows, ROOM.snapshot().get("perf_agent_ids") or [])
+    return JSONResponse({
+        "summary": summary,
+        "total_rows": len(rows),
+        # 有 ttft_ms 的行数。老记录没这个字段，界面用它说明「首字」是从哪条记录开始的。
+        "with_ttft": sum(1 for r in rows if r.get("ttft_ms")),
+        "turns_ms": sum(1 for r in rows if r.get("event") == "turn_end" and r.get("ms")),
+    })
 
 
 @app.get("/api/memory")
