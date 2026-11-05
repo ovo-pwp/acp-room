@@ -8,7 +8,7 @@
 ## 现在就能跑
 
 ```powershell
-git clone <repo-url> acp-room
+git clone https://github.com/ovo-pwp/acp-room.git acp-room
 cd acp-room
 
 python -m venv .venv

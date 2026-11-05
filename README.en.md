@@ -30,7 +30,7 @@ Every one of those is a genuine reply to the previous turn, not a scripted seque
 Requires **Python 3.10+** and **Node 18+** (for `npx`-based ACP adapters).
 
 ```bash
-git clone <repo-url> acp-room
+git clone https://github.com/ovo-pwp/acp-room.git acp-room
 cd acp-room
 
 python3 -m venv .venv

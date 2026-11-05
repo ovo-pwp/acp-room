@@ -1,8 +1,8 @@
 blank_issues_enabled: true
 contact_links:
   - name: 我加的 agent 连不上 / 不说话
-    url: https://github.com/ovo-pwp/acp-room/blob/main/README.md
-    about: 先看 README 的「各家 CLI 的坑」——Hermes 需要 --accept-hooks，探活超时是 25 秒，这类问题大多在那儿有答案。
+    url: https://github.com/ovo-pwp/acp-room/blob/main/README.md#各家-cli-的坑实测
+    about: 先看「各家 CLI 的坑」——Hermes 需要 --accept-hooks，探活超时是 25 秒，这类问题大多在那儿有答案。状态显示「在线」但一直不说话，多半也是这一节。
   - name: 我不知道模型该从哪来
-    url: https://github.com/ovo-pwp/acp-room/blob/main/README.md#模型和密钥从哪来--这个项目不管
-    about: 这个项目不提供模型也不存密钥。README 有一节专门讲这个，含「在线 ≠ 能用」。
+    url: https://github.com/ovo-pwp/acp-room/blob/main/README.md#模型和密钥从哪来-这个项目不管
+    about: 这个项目不提供模型也不存密钥。那一节讲清了各家 CLI 的配置在哪、三种接法，以及为什么「在线 ≠ 能用」。
