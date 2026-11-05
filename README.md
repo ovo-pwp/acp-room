@@ -1,5 +1,9 @@
 # ACP Room — 把多个 AI 放进同一个房间
 
+[![tests](https://github.com/ovo-pwp/acp-room/actions/workflows/tests.yml/badge.svg)](https://github.com/ovo-pwp/acp-room/actions/workflows/tests.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+
 一个本机跑的聊天平台：你和几个**真实的编程 agent**（Claude Code / Codex / Gemini / pi / omp / Hermes）在一个房间里轮流说话。
 不是模拟角色，是真的进程——它们有自己的工具、自己的记忆、自己的模型配置。
 
