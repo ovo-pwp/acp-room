@@ -180,6 +180,15 @@ Working: multi-agent rooms, conversation-driven turn order, per-agent personas, 
 
 Not yet: multi-room UI, token budgets, cross-agent shared memory, mobile layout, i18n of the UI itself (UI and logs are Chinese).
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) — it has an English section at the bottom. Two rules will turn your build red:
+
+- Nothing under `core/` may import `room`, `server`, or an ACP transport (enforced by `tests/test_architecture.py`).
+- Within a turn, agents are strictly serial. The only exception is one message mentioning several agents (`TurnBatch`).
+
+When reporting a bug, include your OS, Python version, which agent misbehaved and its `cmd` — but **never paste keys**.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

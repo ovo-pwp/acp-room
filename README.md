@@ -443,3 +443,16 @@ agent 自己没记忆了，让它重新看全部历史才对。
   - [`formulahendry/acp-ui`](https://github.com/formulahendry/acp-ui) — Vue + Tauri，桌面/移动/Web
   - [`openclaw/acpx`](https://github.com/openclaw/acpx) — 无头 CLI 客户端，agent 注册表最全
   - [`openyak/openyak`](https://github.com/openyak/openyak) — Electron 桌面工作站
+
+## 参与
+
+见 [CONTRIBUTING.md](CONTRIBUTING.md)。里面有两条约会变红的红线：
+
+- `core/` 不许 import `room` / `server` / ACP 传输实现（`tests/test_architecture.py` 强制）
+- 一轮之内必须串行——唯一例外是一句话同时 @ 到好几个人（`TurnBatch`）
+
+报 bug 请带上操作系统、Python 版本、出问题的 agent 和它的 `cmd`（**不要贴 key**）。
+
+## 协议
+
+MIT — 见 [LICENSE](LICENSE)。

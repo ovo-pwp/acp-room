@@ -1,0 +1,59 @@
+name: 功能建议
+description: 想加什么东西，或者现有行为想改。
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先看一眼 README 的「还没做」和 CONTRIBUTING 的「欢迎的 PR」——
+        有些东西已经在计划里了，直接在那儿补充想法更快。
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: 这是哪一类
+      options:
+        - 新功能
+        - 改现有行为
+        - 新的 ACP agent 接入经验（哪家 CLI 要什么特殊参数）
+        - 文档 / 示例
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你遇到的具体问题
+      description: 先讲故事，别先说方案。「我想要 X 功能」通常不如「我每次都要手动做 Y」有用。
+      placeholder: 每次重启服务，新加的 agent 都得重新点一次「连接全部」，否则状态是未连接。
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 你想怎么做
+      description: 如果有想法就写；没有也可以，说清问题就够。
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 你考虑过的替代方案
+      description: 为什么现有的办法不够用？
+    validations:
+      required: false
+
+  - type: dropdown
+    id: willing
+    attributes:
+      label: 你愿意自己实现吗
+      options:
+        - 愿意，可以提 PR
+        - 愿意，但需要指导
+        - 只是提个想法，没时间做
+    validations:
+      required: true

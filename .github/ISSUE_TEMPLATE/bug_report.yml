@@ -1,0 +1,102 @@
+name: Bug 报告
+description: 有东西不工作。请尽量填全，缺信息很难复现。
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ⚠️ **贴日志前请先检查有没有密钥。** 常见位置：`agents[].env`、各家 CLI 的模型配置、
+        代理返回的错误正文。把 `sk-` 开头的串换成 `sk-***` 再贴。
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 问题出在哪
+      options:
+        - 启动 / 连接 agent
+        - 对话：接话、发言顺序、沉默
+        - 回复内容不对（空正文、错误被当成发言、串话）
+        - 界面 / 布局
+        - 权限弹窗 / 策略闸门
+        - 技能 / 讨论引擎
+        - 落盘 / 导出 / 重启恢复
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 发生了什么
+      description: 实际看到的现象。如果界面上有具体表现，描述一下。
+      placeholder: 点了「添加 agent」，状态一直是「连接中…」，十分钟没变。
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 你期望什么
+      placeholder: 几秒内变成「在线」，然后能 @ 它说话。
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      description: 能稳定复现吗？第几次出现？有没有规律（比如只在某个 agent 上）？
+      placeholder: |
+        1. config.json 里加了 hermes
+        2. 启动服务
+        3. 发 @hermes 你好
+        4. 一直不回
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: 操作系统
+      placeholder: Windows 11 / Ubuntu 24.04 / macOS 15
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Python 版本
+      description: 跑 `python -V`
+      placeholder: "3.11.9"
+    validations:
+      required: true
+
+  - type: input
+    id: agents
+    attributes:
+      label: 房间里有哪几个 agent
+      description: 出问题的是哪一个？
+      placeholder: pi, omp, claude, codex, hermes —— 出问题的是 hermes
+    validations:
+      required: true
+
+  - type: textarea
+    id: cmd
+    attributes:
+      label: 那个 agent 的 cmd
+      description: 从 `config.json` 里复制，**不要贴 env 里的 key**。
+      placeholder: '["hermes", "acp", "--accept-hooks"]'
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志
+      description: |
+        `data/<room>/audit.jsonl` 的相关几行，或者启动时的 stderr。
+        **记得先脱敏。**
+      render: text
+    validations:
+      required: false
